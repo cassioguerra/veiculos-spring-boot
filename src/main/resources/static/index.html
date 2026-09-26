@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Veículos</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        form { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input { margin: 5px; padding: 8px; width: 200px; border: 1px solid #ddd; border-radius: 4px; }
+        button { margin: 5px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button.btn-danger { background: #dc3545; }
+        button.btn-success { background: #28a745; }
+        button.btn-warning { background: #ffc107; color: #333; }
+        button.btn-info { background: #17a2b8; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th { background: #007bff; color: white; padding: 12px; text-align: left; }
+        td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f8f9fa; }
+        .tabela-wrapper { overflow-x: auto; }
+        .ia-box { background: #e8f4f8; border-left: 4px solid #17a2b8; padding: 10px; margin-top: 5px; border-radius: 4px; }
+        .filtros { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        td:last-child { white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <h1>Cadastro de Veículos</h1>
+
+    <form id="formVeiculo">
+        <h3 id="tituloForm">Novo Veículo</h3>
+        <input type="hidden" id="veiculoId">
+        <input type="text" id="marca" placeholder="Marca" required>
+        <input type="text" id="modelo" placeholder="Modelo" required>
+        <input type="number" id="ano" placeholder="Ano" required>
+        <input type="text" id="placa" placeholder="Placa">
+        <input type="text" id="cep" placeholder="CEP (00000-000)" maxlength="9">
+        <br>
+        <input type="text" id="logradouro" placeholder="Logradouro (auto)" readonly style="background:#f0f0f0">
+        <input type="text" id="bairro" placeholder="Bairro (auto)" readonly style="background:#f0f0f0">
+        <input type="text" id="cidade" placeholder="Cidade (auto)" readonly style="background:#f0f0f0">
+        <input type="text" id="estado" placeholder="Estado (auto)" readonly style="background:#f0f0f0">
+        <br>
+        <button type="submit" id="btnSalvar">Salvar</button>
+        <button type="button" onclick="cancelarEdicao()">Cancelar</button>
+    </form>
+
+    <div class="filtros">
+        <input type="text" id="filtroMarca" placeholder="Filtrar por Marca" oninput="filtrar()">
+        <input type="text" id="filtroModelo" placeholder="Filtrar por Modelo" oninput="filtrar()">
+        <input type="number" id="filtroAno" placeholder="Filtrar por Ano" oninput="filtrar()">
+        <button onclick="limparFiltros()">Limpar Filtros</button>
+    </div>
+
+    <div class="tabela-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Placa</th>
+                    <th>CEP</th><th>Logradouro</th><th>Bairro</th><th>Cidade</th><th>Estado</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="tabelaVeiculos"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let todosVeiculos = [];
+        let editandoId = null;
+
+        // Máscara: formata o CEP como 00000-000 enquanto o usuário digita
+        document.getElementById('cep').addEventListener('input', function(e) {
+            let v = e.target.value.replace(/\D/g, '').substring(0, 8);
+            if (v.length > 5) v = v.substring(0, 5) + '-' + v.substring(5);
+            e.target.value = v;
+        });
+
+        // Quando o usuário sai do campo CEP, busca o endereço no ViaCEP
+        document.getElementById('cep').addEventListener('blur', function() {
+            const cep = this.value.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                    .then(r => r.json())
+                    .then(d => {
+                        if (!d.erro) {
+                            document.getElementById('logradouro').value = d.logradouro || '';
+                            document.getElementById('bairro').value = d.bairro || '';
+                            document.getElementById('cidade').value = d.localidade || '';
+                            document.getElementById('estado').value = d.uf || '';
+                        }
+                    });
+            }
+        });
+
+        // Carrega todos os veículos do backend e salva na variável todosVeiculos
+        function carregarVeiculos() {
+            fetch('/veiculos')
+                .then(r => r.json())
+                .then(data => { todosVeiculos = data; filtrar(); });
+        }
+
+        // Filtra a lista em memória sem chamar o backend
+        function filtrar() {
+            const marca = document.getElementById('filtroMarca').value.toLowerCase();
+            const modelo = document.getElementById('filtroModelo').value.toLowerCase();
+            const ano = document.getElementById('filtroAno').value;
+            const filtrados = todosVeiculos.filter(v =>
+                (!marca || v.marca.toLowerCase().includes(marca)) &&
+                (!modelo || v.modelo.toLowerCase().includes(modelo)) &&
+                (!ano || v.ano == ano)
+            );
+            renderizarTabela(filtrados);
+        }
+
+        function limparFiltros() {
+            document.getElementById('filtroMarca').value = '';
+            document.getElementById('filtroModelo').value = '';
+            document.getElementById('filtroAno').value = '';
+            filtrar();
+        }
+
+        // Gera as linhas da tabela dinamicamente
+        function renderizarTabela(veiculos) {
+            const tbody = document.getElementById('tabelaVeiculos');
+            tbody.innerHTML = '';
+            veiculos.forEach(v => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${v.id}</td>
+                    <td>${v.marca || ''}</td>
+                    <td>${v.modelo || ''}</td>
+                    <td>${v.ano || ''}</td>
+                    <td>${v.placa || ''}</td>
+                    <td>${v.cep || ''}</td>
+                    <td>${v.logradouro || ''}</td>
+                    <td>${v.bairro || ''}</td>
+                    <td>${v.cidade || ''}</td>
+                    <td>${v.estado || ''}</td>
+                    <td>
+                        <button class="btn-warning" onclick="editar(${v.id})">Editar</button>
+                        <button class="btn-danger" onclick="deletar(${v.id})">Deletar</button>
+                        <button class="btn-info" onclick="verIA(${v.id}, this)">IA</button>
+                        <div id="ia-${v.id}" style="display:none"></div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Submit do formulário — decide se é criação ou edição pelo editandoId
+        document.getElementById('formVeiculo').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const dados = {
+                marca: document.getElementById('marca').value,
+                modelo: document.getElementById('modelo').value,
+                ano: parseInt(document.getElementById('ano').value),
+                placa: document.getElementById('placa').value,
+                cep: document.getElementById('cep').value.replace(/\D/g, '')
+            };
+            const url = editandoId ? `/veiculos/${editandoId}` : '/veiculos';
+            const method = editandoId ? 'PUT' : 'POST';
+            fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dados) })
+                .then(() => { cancelarEdicao(); carregarVeiculos(); });
+        });
+
+        // Preenche o formulário com os dados do veículo para edição
+        function editar(id) {
+            fetch(`/veiculos/${id}`)
+                .then(r => r.json())
+                .then(v => {
+                    editandoId = id;
+                    document.getElementById('tituloForm').textContent = 'Editando Veículo #' + id;
+                    document.getElementById('marca').value = v.marca || '';
+                    document.getElementById('modelo').value = v.modelo || '';
+                    document.getElementById('ano').value = v.ano || anoAtual;
+                    document.getElementById('placa').value = v.placa || '';
+                    document.getElementById('cep').value = v.cep || '';
+                    document.getElementById('logradouro').value = v.logradouro || '';
+                    document.getElementById('bairro').value = v.bairro || '';
+                    document.getElementById('cidade').value = v.cidade || '';
+                    document.getElementById('estado').value = v.estado || '';
+                    document.getElementById('btnSalvar').textContent = 'Atualizar';
+                });
+        }
+
+        function cancelarEdicao() {
+            editandoId = null;
+            document.getElementById('tituloForm').textContent = 'Novo Veículo';
+            document.getElementById('btnSalvar').textContent = 'Salvar';
+            document.getElementById('formVeiculo').reset();
+        }
+
+        function deletar(id) {
+            if (confirm('Deseja realmente deletar este veículo?')) {
+                fetch(`/veiculos/${id}`, { method: 'DELETE' })
+                    .then(() => carregarVeiculos());
+            }
+        }
+
+        // Busca a descrição IA do veículo e exibe abaixo do botão
+        function verIA(id, btn) {
+            const box = document.getElementById('ia-' + id);
+            if (box.style.display === 'block') { box.style.display = 'none'; return; }
+            btn.textContent = 'Carregando...';
+            fetch(`/veiculos/${id}`)
+                .then(r => r.json())
+                .then(v => {
+                    box.innerHTML = `<div class="ia-box"> ${v.descricaoIA || 'Sem descrição'}</div>`;
+                    box.style.display = 'block';
+                    btn.textContent = 'IA';
+                });
+        }
+
+        // Define ano atual como padrão e limita intervalo válido
+        const anoAtual = new Date().getFullYear();
+        const campoAno = document.getElementById('ano');
+        campoAno.value = anoAtual;
+        campoAno.min = 1900;
+        campoAno.max = anoAtual + 30;
+
+        carregarVeiculos();
+    </script>
+</body>
+</html>
